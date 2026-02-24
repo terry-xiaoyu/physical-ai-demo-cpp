@@ -9,6 +9,18 @@ endif()
 # Project
 project(rtccli)
 
+# Set C++ standard for all platforms
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# macOS: ensure proper SDK and stdlib
+if(APPLE)
+  execute_process(COMMAND xcrun --show-sdk-path OUTPUT_VARIABLE CMAKE_OSX_SYSROOT OUTPUT_STRIP_TRAILING_WHITESPACE)
+  set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "Minimum macOS version")
+  # Add C++ stdlib include path explicitly (workaround for broken CLT)
+  include_directories(SYSTEM "${CMAKE_OSX_SYSROOT}/usr/include/c++/v1")
+endif()
+
 find_package(OpenSSL REQUIRED)
 
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
