@@ -5,9 +5,13 @@ RTC 命令行Demo
 
 Linux 命令行开源Demo，提供本地视频采集、本地音频采集、推视频文件流，音频流等。
 
-需要安装依赖视频和音频的依赖OpenGl，PulseAudio, OpenSSL。本地生成 TOKEN 时需要用到 OpenSSL。TOKEN 用于在加入房间时鉴权。
+本项目通过 MQTT 协议与智能体交互，动态获取 RTC 会话信息（appId、roomId、token、userId、targetUserId），无需在配置文件中手动填写这些参数。
 
-```
+## 安装依赖
+
+### 基础依赖
+
+```bash
 sudo apt update
 sudo apt install openssl
 sudo apt-get install build-essential
@@ -16,10 +20,38 @@ sudo apt install pulseaudio libpulse-dev
 
 sudo apt install -y libssl-dev
 sudo apt install -y libxdamage-dev libxrandr-dev libxcomposite-dev
+sudo apt install -y nlohmann-json3-dev  # JSON 库
+```
+
+### 安装 Paho MQTT 库
+
+本项目依赖 Paho MQTT C 和 C++ 库，需要从源码编译安装：
+
+```bash
+# 安装 Paho MQTT C 库
+git clone https://github.com/eclipse/paho.mqtt.c.git
+cd paho.mqtt.c
+mkdir build && cd build
+cmake -DPAHO_WITH_SSL=ON -DPAHO_BUILD_SHARED=ON ..
+make -j$(nproc)
+sudo make install
+cd ../..
+
+# 安装 Paho MQTT C++ 库
+git clone https://github.com/eclipse/paho.mqtt.cpp.git
+cd paho.mqtt.cpp
+mkdir build && cd build
+cmake -DPAHO_WITH_SSL=ON -DPAHO_BUILD_SHARED=ON ..
+make -j$(nproc)
+sudo make install
+cd ../..
+
+# 更新动态库缓存
+sudo ldconfig
 ```
 
 最小依赖：
-Cmake >= 3.13
+Cmake >= 3.14
 
 ## 获取 VolcEngineRTC SDK
 
@@ -63,46 +95,62 @@ third_party/
 ├── CMakeLists.txt  //cmake 工程配置文件
 ├── config.json //配置信息
 ├── README.md
+├── client_agent_message_protocol.md //客户端-智能体消息交互协议文档
 ├── resources //资源文件（不包含在仓库中，需要自己准备）
-│   ├── 1280X720X15XI420.yuv  //I420视频帧文件（分辨率1280x720，帧率15，像素格式I420）
-│   └── 48000-stereo-s16le.pcm //PCM音频帧文件（采样率48000Hz，双声道，16位）
+│   ├── 1280X720X15XI420.yuv  //I420视频帧文件（分辨率1280x720，帧率15，像素格式I420）
+│   └── 48000-stereo-s16le.pcm //PCM音频帧文件（采样率48000Hz，双声道，16位）
 ├── src
-│   ├── app_data_manager.cc  //全局数据管理类
-│   ├── app_data_manager.h
-│   ├── main.cc   //主函数
-│   ├── rtc_engine_wrapper.cc //火山引擎包装类
-│   ├── rtc_engine_wrapper.h
-│   └── util
-│       ├── argparser.cc //命令行参数解析类
-│       ├── argparser.h
-│       ├── json11   //json配置文件解析类
-│       │   ├── json11.cpp
-│       │   ├── json11.hpp
-│       │   └── LICENSE.txt
-│       ├── thread_loop.h //线程定时器
-│       ├── util.cc  //
-│       └── util.h
+│   ├── app_data_manager.cc  //全局数据管理类
+│   ├── app_data_manager.h
+│   ├── main.cc   //主函数
+│   ├── mqtt_client.cpp  //MQTT客户端实现
+│   ├── mqtt_client.h    //MQTT客户端头文件
+│   ├── rtc_engine_wrapper.cc //火山引擎包装类
+│   ├── rtc_engine_wrapper.h
+│   └── util
+│       ├── argparser.cc //命令行参数解析类
+│       ├── argparser.h
+│       ├── json11   //json配置文件解析类
+│       │   ├── json11.cpp
+│       │   ├── json11.hpp
+│       │   └── LICENSE.txt
+│       ├── thread_loop.h //线程定时器
+│       ├── util.cc  //
+│       └── util.h
 └── third_party （不包含在仓库中，需要自己准备）
-    ├── Linux 
-    │   ├── VolcEngineRTC_arm  //arm sdk
-    │   └── VolcEngineRTC_x86 //x86
+    ├── Linux
+    │   ├── VolcEngineRTC_arm  //arm sdk
+    │   └── VolcEngineRTC_x86 //x86
     └── Windows
 ```
 
 ## 构建项目
 
-本项目使用 [CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) 管理部分依赖，CMake 配置时会自动下载所需的依赖库。
+### 步骤一：安装 mcp-over-mqtt-cpp-sdk
 
-### 步骤一：构建 Demo 工程
+本项目依赖 mcp-over-mqtt-cpp-sdk，需要先从源码编译安装：
 
 ```bash
-cd QuickStart_Terminal_Demo
+git clone https://github.com/terry-xiaoyu/mcp-over-mqtt-cpp-sdk.git
+cd mcp-over-mqtt-cpp-sdk
+mkdir build && cd build
+cmake ..
+make -j$(nproc)
+sudo make install
+cd ../..
+
+# 更新动态库缓存
+sudo ldconfig
+```
+
+### 步骤二：构建 Demo 工程
+
+```bash
+cd physical-ai-demo-cpp
 cmake -B build
 ```
 
-> **注意**：首次构建时，CPM.cmake 会自动从 GitHub 下载依赖，请确保网络畅通。
-
-### 步骤二：编译 Demo 工程
+### 步骤三：编译 Demo 工程
 
 ```bash
 cmake --build build
@@ -110,22 +158,19 @@ cmake --build build
 cd build && make -j$(nproc)
 ```
 
-### 步骤三：获取 AppId 和 App Key
-
-1. 登录[火山引擎控制台](https://console.volcengine.com/rtc/listRTC)
-2. 创建应用并获取 **AppId** 和 **App Key**
-3. App Key 用于生成临时 Token，详见[密钥说明](https://www.volcengine.com/docs/6348/69828)
-
-### 步骤四：修改配置文件
+### 步骤三：修改配置文件
 
 编辑 `build/config.json` 文件：
 
 ```json
 {
-    "app_id": "your_app_id",
-    "app_key": "your_app_key",
-    "room_id": "your_room_id",
-    "user_id": "your_user_id",
+    "mqtt": {
+        "broker_url": "tcp://your-mqtt-broker:1883",
+        "client_id": "your-client-id",
+        "agent_id": "your-agent-id",
+        "username": "",
+        "password": ""
+    },
     "enable_audio": false,
     "enable_video": true,
     "enable_external_audio": false,
@@ -143,32 +188,56 @@ cd build && make -j$(nproc)
         "fps": 30,
         "max_bitrate": 3000
     },
-    "video_device_id": "print in console",
-    "audio_device_id": "print in console"
+    "video_device_index": 0,
+    "audio_device_index": -1
 }
 ```
 
 **必须修改的字段：**
-- `app_id` - 在控制台获取的 AppId
-- `app_key` - 在控制台获取的 App Key
-- `room_id` - 房间 ID（自定义）
-- `user_id` - 用户 ID（自定义）
+- `mqtt.broker_url` - MQTT Broker 的地址，例如 `tcp://192.168.1.100:1883`
+- `mqtt.client_id` - 客户端 ID，用于 MQTT 连接和与智能体通信
+- `mqtt.agent_id` - 智能体 ID，消息将发送到该智能体
 
-### 步骤五：运行 Demo
+**可选字段：**
+- `mqtt.username` - MQTT 认证用户名（如果 Broker 需要认证）
+- `mqtt.password` - MQTT 认证密码（如果 Broker 需要认证）
+
+### 步骤四：运行 Demo
 
 ```bash
 cd build
 ./rtccli
 ```
 
-默认配置：关闭音频采集，开启视频内部采集。如需体验不同功能，修改 `config.json` 后重启程序。config.json 配置文件各字段功能含义如下表所示：
+程序启动后会执行以下流程：
+1. 连接到 MQTT Broker
+2. 订阅 `$agent-client/{clientId}/#` 主题
+3. 向智能体发送 `initializeSession` 消息初始化会话
+4. 向智能体发送 `startVoiceChat` 消息请求语音会话
+5. 从智能体响应中获取 `appId`、`roomId`、`token`、`userId`、`targetUserId`
+6. 使用获取的信息初始化 RTC 引擎并加入房间
+
+默认配置：关闭音频采集，开启视频内部采集。如需体验不同功能，修改 `config.json` 后重启程序。
+
+## 智能体交互协议
+
+详见 [client_agent_message_protocol.md](client_agent_message_protocol.md) 文档。
+
+主要交互流程：
+
+1. **初始化会话**：客户端向智能体发送 `initializeSession` 请求
+2. **发起语音会话**：客户端向智能体发送 `startVoiceChat` 请求，智能体返回 RTC 连接所需的参数
+3. **清理会话**：程序退出时向智能体发送 `destroySession` 消息
+
+## 配置字段说明
 
 | 字段名称 | 功能含义 |
 | --- | --- |
-| `app_id` | 应用唯一标识 |
-| `app_key` | 在控制台上获取的 AppKey，用于生成临时 Token |
-| `room_id` | 房间 ID |
-| `user_id` | 用户 ID |
+| `mqtt.broker_url` | MQTT Broker 地址 |
+| `mqtt.client_id` | 客户端 ID |
+| `mqtt.agent_id` | 智能体 ID |
+| `mqtt.username` | MQTT 认证用户名（可选） |
+| `mqtt.password` | MQTT 认证密码（可选） |
 | `enable_audio` | 打开或者关闭音频采集模块 |
 | `enable_video` | 打开或者关闭视频采集模块 |
 | `enable_external_audio` | 是否开启外部音频采集。默认为 `false` 表示开启内部音频采集，这个也是 SDK 默认行为；`true` 表示开启外部音频采集，对应调用 `setAudioSourceType`，设置主流 type 类型为 `kAudioSourceTypeExternal`。该字段只在打开音频采集模块功能即 `enable_audio=true` 时生效。 |

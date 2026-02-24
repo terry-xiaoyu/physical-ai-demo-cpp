@@ -1,4 +1,4 @@
-﻿#include "app_data_manager.h"
+#include "app_data_manager.h"
 #include "json11.hpp"
 #include "util/util.h"
 #include <functional>
@@ -23,38 +23,41 @@ bool AppDataManager::parse(const std::string &json_str) {
 		return false;
 	}
 
-	auto checkStr = [&](const std::string &data)->bool {
-		if (data.empty()) {
-			return false;
-		}
-		std::regex exp(strNameRegex);
-		std::smatch base_match;
-		auto bRet = std::regex_match(data,base_match,exp);
-		return bRet;
-	};
-	
 	m_appData = std::make_shared<StuAppData>();
-	m_appData->app_id = configJson["app_id"].string_value();
-	m_appData->room_id = configJson["room_id"].string_value();
-	m_appData->user_id = configJson["user_id"].string_value();
+
+	// Parse MQTT configuration
+	auto mqttConfigJson = configJson["mqtt"];
+	if (mqttConfigJson.is_null()) {
+		LOG_ERROR("mqtt config is missing!");
+		return false;
+	}
+
+	m_appData->mqtt_config.broker_url = mqttConfigJson["broker_url"].string_value();
+	m_appData->mqtt_config.client_id = mqttConfigJson["client_id"].string_value();
+	m_appData->mqtt_config.agent_id = mqttConfigJson["agent_id"].string_value();
+	m_appData->mqtt_config.username = mqttConfigJson["username"].string_value();
+	m_appData->mqtt_config.password = mqttConfigJson["password"].string_value();
+
+	if (m_appData->mqtt_config.broker_url.empty()) {
+		LOG_ERROR("mqtt broker_url is empty!");
+		return false;
+	}
+
+	if (m_appData->mqtt_config.client_id.empty()) {
+		LOG_ERROR("mqtt client_id is empty!");
+		return false;
+	}
+
+	if (m_appData->mqtt_config.agent_id.empty()) {
+		LOG_ERROR("mqtt agent_id is empty!");
+		return false;
+	}
+
+	LOG_INFO("MQTT config - broker: " << m_appData->mqtt_config.broker_url
+			 << " client_id: " << m_appData->mqtt_config.client_id
+			 << " agent_id: " << m_appData->mqtt_config.agent_id);
+
 	m_appData->rtc_env = configJson["rtc_env"].int_value();
-
-	if (m_appData->app_id.empty()) {
-		LOG_WARN("appid is empty!");
-		return false;
-	}
-
-	if (!checkStr(m_appData->room_id)) {
-		LOG_WARN("roomid is invalid!");
-		return false;
-	}
-
-	if (!checkStr(m_appData->user_id)) {
-		LOG_WARN("userid is invalid!");
-		return false;
-	}
-
-	m_appData->app_key = configJson["app_key"].string_value();
 	m_appData->enable_video = configJson["enable_video"].bool_value();
 	m_appData->enable_external_audio = configJson["enable_external_audio"].bool_value();
 	m_appData->enable_external_video = configJson["enable_external_video"].bool_value();
@@ -71,7 +74,7 @@ bool AppDataManager::parse(const std::string &json_str) {
 	}else {
 		LOG_WARN("video_capture_config obj is null");
 	}
-	
+
 	auto videoEncoderConfigJson = configJson["video_encoder_config"];
 	if (!videoEncoderConfigJson.is_null()) {
 		auto videoEncoderConfig = std::make_shared<StuVideoEncoderConfig>();
@@ -82,7 +85,7 @@ bool AppDataManager::parse(const std::string &json_str) {
 		m_appData->video_encoder_config = videoEncoderConfig;
 	}
 	else {
-		LOG_WARN("video_capture_config obj is null");
+		LOG_WARN("video_encoder_config obj is null");
 	}
 
 	m_appData->video_device_index = configJson["video_device_index"].int_value();
@@ -90,7 +93,7 @@ bool AppDataManager::parse(const std::string &json_str) {
 	return true;
 }
 
-bool AppDataManager::load(const std::string &json_file) 
+bool AppDataManager::load(const std::string &json_file)
 {
 	auto data = bytertc::readFile(json_file.c_str(),"rt");
 	if (data.empty()) {
@@ -109,7 +112,17 @@ bool AppDataManager::load(const std::string &json_file)
 	return true;
 }
 
+void AppDataManager::setRtcSessionInfo(const StuRtcSessionInfo& info) {
+	if (m_appData) {
+		m_appData->rtc_session = info;
+		LOG_INFO("RTC session info set - appId: " << info.app_id
+				 << " roomId: " << info.room_id
+				 << " userId: " << info.user_id
+				 << " targetUserId: " << info.target_user_id);
+	}
+}
+
 AppDataManager *AppDataManager::instance() {
 	static AppDataManager appDataMgr;
 	return &appDataMgr;
-} 
+}

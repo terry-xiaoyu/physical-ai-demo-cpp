@@ -1,5 +1,5 @@
 
-cmake_minimum_required(VERSION 3.10.0)
+cmake_minimum_required(VERSION 3.14.0)
 
 if (${CMAKE_VERSION} VERSION_GREATER "3.13.0")
   cmake_policy(SET CMP0079 NEW)
@@ -10,8 +10,22 @@ endif()
 project(rtccli)
 
 # Set C++ standard for all platforms
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Find system-installed paho.mqtt libraries
+# Users need to install paho.mqtt.c and paho.mqtt.cpp first:
+#   git clone https://github.com/eclipse/paho.mqtt.c.git && cd paho.mqtt.c
+#   mkdir build && cd build && cmake -DPAHO_WITH_SSL=ON -DPAHO_BUILD_SHARED=ON .. && make && sudo make install
+#   git clone https://github.com/eclipse/paho.mqtt.cpp.git && cd paho.mqtt.cpp
+#   mkdir build && cd build && cmake -DPAHO_WITH_SSL=ON -DPAHO_BUILD_SHARED=ON .. && make && sudo make install
+find_package(PahoMqttCpp REQUIRED)
+
+# Find system-installed mcp-over-mqtt-cpp-sdk
+# Users need to install it first:
+#   git clone https://github.com/terry-xiaoyu/mcp-over-mqtt-cpp-sdk.git && cd mcp-over-mqtt-cpp-sdk
+#   mkdir build && cd build && cmake .. && make && sudo make install
+find_package(mcp_mqtt_server REQUIRED)
 
 # macOS: ensure proper SDK and stdlib
 if(APPLE)
@@ -83,12 +97,14 @@ endif()
 message(STATUS "BYTERTC_SDK_DIR: ${BYTERTC_LIB_DIR}")
 target_include_directories(${PROJECT_NAME} PUBLIC ${BYTERTC_SDK_DIR}/include)
 target_link_directories(${PROJECT_NAME} PUBLIC ${BYTERTC_LIB_DIR})
-target_link_libraries(${PROJECT_NAME} PUBLIC VolcEngineRTC)
+
+# Link mcp-over-mqtt-cpp-sdk and its dependencies
+target_link_libraries(${PROJECT_NAME} PUBLIC VolcEngineRTC mcp_mqtt::mcp_mqtt_server PahoMqttCpp::paho-mqttpp3 OpenSSL::SSL OpenSSL::Crypto)
 
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
   target_link_options(${PROJECT_NAME} PUBLIC -static-libgcc -static-libstdc++ -latomic)
   target_link_options(${PROJECT_NAME} PUBLIC -Wl,-rpath-link=${BYTERTC_LIB_DIR}/libVolcEngineRTC.so)
-  set(CMAKE_CXX_FLAGS "-ggdb '-std=c++14' -fPIC -pthread")
+  set(CMAKE_CXX_FLAGS "-ggdb -fPIC -pthread")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
   #opengl
   find_package(OpenGL REQUIRED)

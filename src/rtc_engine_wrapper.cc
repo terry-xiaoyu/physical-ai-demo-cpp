@@ -1,10 +1,9 @@
-﻿#include "rtc_engine_wrapper.h"
+#include "rtc_engine_wrapper.h"
 #include "app_data_manager.h"
 #include "util/util.h"
 #include <functional>
 #include <memory>
 #include "rtc/bytertc_advance.h"
-#include "TokenGenerator/TokenGenerator.h"
 
 #define AUDIO_SAMPLE_RATE 48000
 #define AUDIO_CHANNELs 2
@@ -19,12 +18,19 @@ RTCVideoEngineWrapper::~RTCVideoEngineWrapper() {
 	}
 }
 
-int RTCVideoEngineWrapper::RTCVideoEngineWrapper::init() 
+int RTCVideoEngineWrapper::RTCVideoEngineWrapper::init()
 {
 	auto chVersion = bytertc::IRTCEngine::getSDKVersion();
 	std::string strVersion = chVersion ? chVersion : "";
 	LOG_INFO("sdk version:" << strVersion);
 	auto appDataIns = AppDataManager::instance()->getAppData();
+
+	// Check if RTC session info is available (obtained via MQTT)
+	if (!appDataIns->rtc_session.valid) {
+		LOG_ERROR("RTC session info not available! Please start voice chat via MQTT first.");
+		return -1;
+	}
+
 	std::string param;
 	if (appDataIns->rtc_env == 2) {
 		param = "{\n"
@@ -49,9 +55,9 @@ int RTCVideoEngineWrapper::RTCVideoEngineWrapper::init()
 			"}";
 	}
 	bytertc::EngineConfig config;
-	config.app_id = appDataIns->app_id.c_str();
+	config.app_id = appDataIns->rtc_session.app_id.c_str();
 	config.parameters = param.c_str();
-	
+
 	m_pVideoEngine = bytertc::IRTCEngine::createRTCEngine(config, this);
 	if (m_pVideoEngine == nullptr) {
 		LOG_INFO("create rtc video failed!");
@@ -69,14 +75,14 @@ int RTCVideoEngineWrapper::RTCVideoEngineWrapper::init()
 	if (nRet) {
 		return nRet;
 	}
-	if ((appDataIns->enable_external_audio) 
+	if ((appDataIns->enable_external_audio)
 		|| (appDataIns->enable_video && appDataIns->enable_external_video)) {
 		m_threadLoop->do_loop();
 	}
 	return 0;
 }
 
-int RTCVideoEngineWrapper::joinRoom() 
+int RTCVideoEngineWrapper::joinRoom()
 {
 	if (m_pVideoEngine == nullptr) {
 		LOG_WARN("rtc video engine is null");
@@ -84,8 +90,17 @@ int RTCVideoEngineWrapper::joinRoom()
 	}
 
 	auto appDataIns = AppDataManager::instance()->getAppData();
+
+	// Check if RTC session info is available
+	if (!appDataIns->rtc_session.valid) {
+		LOG_ERROR("RTC session info not available!");
+		return -1;
+	}
+
+	const auto& rtcSession = appDataIns->rtc_session;
+
 	if (m_pRtcRoom == nullptr) {
-		m_pRtcRoom = m_pVideoEngine->createRTCRoom(appDataIns->room_id.c_str());
+		m_pRtcRoom = m_pVideoEngine->createRTCRoom(rtcSession.room_id.c_str());
 		m_pRtcRoom->setRTCRoomEventHandler(this);
 	}
 	if (m_pRtcRoom == nullptr) {
@@ -94,18 +109,18 @@ int RTCVideoEngineWrapper::joinRoom()
 	}
 
 	bytertc::UserInfo user;
-	user.uid = appDataIns->user_id.c_str();
+	user.uid = rtcSession.user_id.c_str();
 	bytertc::RTCRoomConfig roomConfig;
 	roomConfig.stream_id = nullptr;
 	roomConfig.is_auto_subscribe_audio = true;
 	roomConfig.is_auto_subscribe_video = false;
 
-	std::string token = TokenGenerator::generate(
-		appDataIns->app_id, appDataIns->app_key, 
-		appDataIns->room_id, appDataIns->user_id
-	);
+	LOG_INFO("Joining room - appId: " << rtcSession.app_id
+			 << " roomId: " << rtcSession.room_id
+			 << " userId: " << rtcSession.user_id
+			 << " targetUserId: " << rtcSession.target_user_id);
 
-	int nRet = m_pRtcRoom->joinRoom(token.c_str(), user, true, roomConfig);
+	int nRet = m_pRtcRoom->joinRoom(rtcSession.token.c_str(), user, true, roomConfig);
 	if (nRet != 0) {
 		LOG_WARN("create rtc room failed!" << nRet);
 		return nRet;

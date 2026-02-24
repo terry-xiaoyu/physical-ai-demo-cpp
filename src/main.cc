@@ -1,21 +1,23 @@
-﻿
 #ifdef __Linux__
 #include <dlfcn.h>
 
 #endif
 #include <iostream>
 #include <cctype>
+#include <chrono>
 #include "util/util.h"
 #include "util/argparser.h"
 #include "app_data_manager.h"
 #include "rtc_engine_wrapper.h"
+#include "mqtt_client.h"
 #include <signal.h>
 #include <atomic>
 
 #define DEFAULT_CONFIG_JSON_FILE "config.json"
 std::atomic<bool> g_bExit(false);
+MqttClient* g_mqttClient = nullptr;
 
-void exitAppSignalCallback(int signal) 
+void exitAppSignalCallback(int signal)
 {
 	if (g_bExit) {
 		LOG_WARN("already in exit status, current signal:" << signal);
@@ -24,11 +26,14 @@ void exitAppSignalCallback(int signal)
 	g_bExit = true;
 	LOG_WARN("recv exit signal:"<<signal<< ", start destroy rtc engine!");
 	RTCVideoEngineWrapper::instance()->destory();
+	if (g_mqttClient) {
+		g_mqttClient->disconnect();
+	}
 	LOG_INFO("end destroy rtc engine");
 	exit(0);
 }
 
-void registerSignals() 
+void registerSignals()
 {
 	 signal(SIGINT, &exitAppSignalCallback);
 	 signal(SIGABRT, &exitAppSignalCallback);
@@ -85,26 +90,87 @@ int main(int argc, char* argv[]) {
 		LOG_INFO("Will save received audio to: " << saveAudioPath);
 	}
 
+	// Step 1: Connect to MQTT broker
+	MqttClient mqttClient;
+	g_mqttClient = &mqttClient;
+
+	const auto& mqttConfig = appDataIns->getAppData()->mqtt_config;
+	MqttConfig config;
+	config.broker_url = mqttConfig.broker_url;
+	config.client_id = mqttConfig.client_id;
+	config.agent_id = mqttConfig.agent_id;
+	config.username = mqttConfig.username;
+	config.password = mqttConfig.password;
+
+	LOG_INFO("Connecting to MQTT broker...");
+	if (!mqttClient.connect(config)) {
+		LOG_ERROR("Failed to connect to MQTT broker!");
+		return -1;
+	}
+
+	// Step 2: Initialize session with agent
+	LOG_INFO("Initializing session with agent...");
+	if (!mqttClient.initializeSession()) {
+		LOG_ERROR("Failed to initialize session with agent!");
+		mqttClient.disconnect();
+		return -1;
+	}
+
+	// Step 3: Start voice chat to get RTC session info
+	LOG_INFO("Starting voice chat to get RTC session info...");
+	std::string taskId = "task_" + std::to_string(
+		std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::system_clock::now().time_since_epoch()
+		).count()
+	);
+
+	VoiceChatInfo voiceChatInfo;
+	if (!mqttClient.startVoiceChat(taskId, voiceChatInfo)) {
+		LOG_ERROR("Failed to start voice chat!");
+		mqttClient.disconnect();
+		return -1;
+	}
+
+	// Step 4: Set RTC session info to AppDataManager
+	StuRtcSessionInfo rtcSession;
+	rtcSession.app_id = voiceChatInfo.app_id;
+	rtcSession.room_id = voiceChatInfo.room_id;
+	rtcSession.token = voiceChatInfo.token;
+	rtcSession.user_id = voiceChatInfo.user_id;
+	rtcSession.target_user_id = voiceChatInfo.target_user_id;
+	rtcSession.valid = true;
+	appDataIns->setRtcSessionInfo(rtcSession);
+
+	// Step 5: Initialize and join RTC room
 	auto nRet = RTCVideoEngineWrapper::instance()->init();
 	if (nRet) {
+		LOG_ERROR("Failed to initialize RTC engine!");
+		mqttClient.disconnect();
 		bytertc::printHelpAndExit();
 	}
 
 	nRet = RTCVideoEngineWrapper::instance()->joinRoom();
 	if (nRet) {
+		LOG_ERROR("Failed to join RTC room!");
+		mqttClient.disconnect();
 		bytertc::printHelpAndExit();
 	}
+
+	LOG_INFO("Successfully joined RTC room. Press ESC or 'q' to exit.");
 
 	int ch;
 	while ((ch = std::getchar()) != EOF) {
 		if (std::isprint(ch)) {
 			LOG_INFO("Input ESC or q to exit. current input:"<<(char)ch);
 		}
-		// 按 esc 或者 q 退出
+		// Press ESC or 'q' to exit
 		if (ch == 27 || ch == 113) {
 			break;
 		}
 	}
+
 	RTCVideoEngineWrapper::instance()->destory();
-    return 0;
+	mqttClient.disconnect();
+	g_mqttClient = nullptr;
+	return 0;
 }
