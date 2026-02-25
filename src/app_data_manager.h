@@ -56,6 +56,7 @@ struct StuAppData
 	std::shared_ptr<StuVideoCaptureConfig> video_capture_config;
 	std::shared_ptr<StuVideoEncoderConfig> video_encoder_config;
 	int video_device_index = 0;
+	int audio_loop_interval_seconds = 15;  // 音频循环间隔，默认15秒
 };
 
 class AppDataManager {

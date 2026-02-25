@@ -90,6 +90,13 @@ bool AppDataManager::parse(const std::string &json_str) {
 
 	m_appData->video_device_index = configJson["video_device_index"].int_value();
 	LOG_INFO("video-device=" << m_appData->video_device_index);
+
+	m_appData->audio_loop_interval_seconds = configJson["audio_loop_interval_seconds"].int_value();
+	if (m_appData->audio_loop_interval_seconds <= 0) {
+		m_appData->audio_loop_interval_seconds = 15;  // 默认15秒
+	}
+	LOG_INFO("audio_loop_interval_seconds=" << m_appData->audio_loop_interval_seconds);
+
 	return true;
 }
 

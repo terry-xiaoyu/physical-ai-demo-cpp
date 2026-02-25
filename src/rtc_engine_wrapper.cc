@@ -385,8 +385,27 @@ void RTCVideoEngineWrapper::pushExternalVideoFrame()
 	m_nCurrentVideoFrameIndex %= m_nTotalVideoFrames;
 }
 
-void RTCVideoEngineWrapper::pushExternalAudioFrame() 
+void RTCVideoEngineWrapper::pushExternalAudioFrame()
 {
+	if (!m_bRoomAudioStateReady) {
+		// 房间音频状态未准备好，暂不发送外部音频帧
+		return;
+	}
+
+	auto appDataIns = AppDataManager::instance()->getAppData();
+
+	// 检查是否在暂停状态
+	if (m_bAudioLoopPaused) {
+		auto now = std::chrono::steady_clock::now();
+		auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - m_audioLoopPauseStartTime).count();
+		if (elapsed < appDataIns->audio_loop_interval_seconds) {
+			return;  // 还在暂停期间，不发送
+		}
+		// 暂停结束，恢复发送
+		m_bAudioLoopPaused = false;
+		LOG_INFO("Audio loop pause ended, resuming...");
+	}
+
 	bytertc::AudioFrameBuilder builder;
 	int n10msAudioFrameSize = AUDIO_SAMPLE_RATE * 0.01 * AUDIO_CHANNELs * sizeof(int16_t);
 	builder.data = m_vecAudioPCMData.data() + n10msAudioFrameSize * m_nCurrentAudioFrameIndex;
@@ -400,9 +419,15 @@ void RTCVideoEngineWrapper::pushExternalAudioFrame()
 	if (nRet) {
 		LOG_ERROR("push external audio frame error! ret: " << nRet);
 	}
-	LOG_INFO("push external audio frame success! frameIndex:" << m_nCurrentAudioFrameIndex << " sample_rate: " << builder.sample_rate << " channel: " << builder.channel << " data_size: " << builder.data_size);
+
 	++m_nCurrentAudioFrameIndex;
-	m_nCurrentAudioFrameIndex %= m_nTotalAudioFrames;
+	if (m_nCurrentAudioFrameIndex >= m_nTotalAudioFrames) {
+		m_nCurrentAudioFrameIndex = 0;
+		// 开始暂停
+		m_bAudioLoopPaused = true;
+		m_audioLoopPauseStartTime = std::chrono::steady_clock::now();
+		LOG_INFO("Audio loop completed, pausing for " << appDataIns->audio_loop_interval_seconds << " seconds...");
+	}
 }
 
 void RTCVideoEngineWrapper::onRoomStateChanged(const char * room_id, const char * uid, int state, const char * extra_info)
@@ -426,6 +451,7 @@ void RTCVideoEngineWrapper::onError(int err)
 void RTCVideoEngineWrapper::onLeaveRoom(const bytertc::RtcRoomStats & stats)
 {
 	LOG_INFO("[callback]");
+	m_bRoomAudioStateReady = false;
 }
 
 void RTCVideoEngineWrapper::onRoomStats(const bytertc::RtcRoomStats & stats)
@@ -535,6 +561,13 @@ void RTCVideoEngineWrapper::onRemoteAudioStateChanged(const char* stream_id, con
 	std::string roomId = stream_info.room_id ? stream_info.room_id : "";
 	std::string userId = stream_info.user_id ? stream_info.user_id : "";
 	LOG_INFO("[callback] streamId: "<<streamId << " roomId: "<< roomId << " userId: "<< userId<<" index: "<<stream_info.stream_index << " state: "<<state <<" reason: " << reason);
+	if (state == bytertc::RemoteAudioState::kRemoteAudioStateStarting || state == bytertc::RemoteAudioState::kRemoteAudioStateDecoding) {
+		m_bRoomAudioStateReady = true;
+		LOG_INFO("Remote Audio ready, audio push enabled");
+	} else if (state == bytertc::RemoteAudioState::kRemoteAudioStateStopped || state == bytertc::RemoteAudioState::kRemoteAudioStateFailed) {
+		m_bRoomAudioStateReady = false;
+		LOG_INFO("Remote Audio stopped or failed, audio push disabled");
+	}
 }
 
 void RTCVideoEngineWrapper::onFirstLocalVideoFrameCaptured(bytertc::IVideoSource* video_source, const bytertc::VideoFrameInfo& info)

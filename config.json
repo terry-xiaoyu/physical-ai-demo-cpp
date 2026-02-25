@@ -11,6 +11,7 @@
     "enable_external_audio": false,
     "enable_external_video": false,
     "audio_file": "48000-stereo-s16le.pcm",
+    "audio_loop_interval_seconds": 15,
     "video_file": "1280X720X15XI420.yuv",
     "video_capture_config": {
         "width": 1280,

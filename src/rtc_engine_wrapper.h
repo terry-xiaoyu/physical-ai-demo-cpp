@@ -91,4 +91,9 @@ private:
 	std::ofstream					m_audioOutputFile;
 	std::mutex						m_audioFileMutex;
 	bool							m_bSaveAudioEnabled = false;
+	// audio loop pause
+	bool							m_bAudioLoopPaused = false;
+	std::chrono::steady_clock::time_point m_audioLoopPauseStartTime;
+	// room audio ready flag
+	bool							m_bRoomAudioStateReady = false;
 };
