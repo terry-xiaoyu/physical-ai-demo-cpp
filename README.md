@@ -146,6 +146,7 @@ sudo ldconfig
 ### 步骤二：构建 Demo 工程
 
 ```bash
+git clone https://github.com/terry-xiaoyu/physical-ai-demo-cpp.git
 cd physical-ai-demo-cpp
 cmake -B build
 ```
