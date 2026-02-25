@@ -40,7 +40,7 @@ public:
     bool isConnected() const;
 
     bool initializeSession();
-    bool startVoiceChat(const std::string& task_id, VoiceChatInfo& info);
+    bool startVoiceChat(VoiceChatInfo& info);
     bool destroySession();
 
     void setMessageCallback(std::function<void(const std::string&, const std::string&)> callback);

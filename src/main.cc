@@ -118,14 +118,9 @@ int main(int argc, char* argv[]) {
 
 	// Step 3: Start voice chat to get RTC session info
 	LOG_INFO("Starting voice chat to get RTC session info...");
-	std::string taskId = "task_" + std::to_string(
-		std::chrono::duration_cast<std::chrono::milliseconds>(
-			std::chrono::system_clock::now().time_since_epoch()
-		).count()
-	);
 
 	VoiceChatInfo voiceChatInfo;
-	if (!mqttClient.startVoiceChat(taskId, voiceChatInfo)) {
+	if (!mqttClient.startVoiceChat(voiceChatInfo)) {
 		LOG_ERROR("Failed to start voice chat!");
 		mqttClient.disconnect();
 		return -1;

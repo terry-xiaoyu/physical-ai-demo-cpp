@@ -109,20 +109,21 @@ int RTCVideoEngineWrapper::joinRoom()
 	}
 
 	bytertc::UserInfo user;
-	user.uid = rtcSession.user_id.c_str();
+	// use target_user_id as the uid of the current user, rtcSession.user_id is the user id of the AI agent, which is not used in RTC SDK.
+	user.uid = rtcSession.target_user_id.c_str();
 	bytertc::RTCRoomConfig roomConfig;
 	roomConfig.stream_id = nullptr;
 	roomConfig.is_auto_subscribe_audio = true;
-	roomConfig.is_auto_subscribe_video = false;
+	roomConfig.is_auto_subscribe_video = true;
 
 	LOG_INFO("Joining room - appId: " << rtcSession.app_id
 			 << " roomId: " << rtcSession.room_id
-			 << " userId: " << rtcSession.user_id
-			 << " targetUserId: " << rtcSession.target_user_id);
+			 << " userId: " << user.uid
+			 << " token: " << rtcSession.token);
 
-	int nRet = m_pRtcRoom->joinRoom(rtcSession.token.c_str(), user, true, roomConfig);
+	int nRet = m_pRtcRoom->joinRoom(rtcSession.token.c_str(), user, false, roomConfig);
 	if (nRet != 0) {
-		LOG_WARN("create rtc room failed!" << nRet);
+		LOG_WARN("join rtc room failed!" << nRet);
 		return nRet;
 	}
 	m_pRtcRoom->publishStreamVideo(true);

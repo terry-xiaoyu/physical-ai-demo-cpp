@@ -123,13 +123,11 @@ bool MqttClient::initializeSession() {
     return false;
 }
 
-bool MqttClient::startVoiceChat(const std::string& task_id, VoiceChatInfo& info) {
+bool MqttClient::startVoiceChat(VoiceChatInfo& info) {
     std::string response;
     std::string requestId = generateRequestId();
 
-    json11::Json params = json11::Json::object{
-        {"taskId", task_id}
-    };
+    json11::Json params = json11::Json::object{};
 
     if (!sendRequest("startVoiceChat", params.dump(), requestId, response)) {
         LOG_ERROR("Failed to start voice chat");
